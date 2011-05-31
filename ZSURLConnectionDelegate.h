@@ -36,6 +36,8 @@
 void incrementNetworkActivity(id sender);
 void decrementNetworkActivity(id sender);
 
+typedef void (^zsURLConnectionDelegateCompletionBlock)(ZSURLConnectionDelegate *delegate);
+
 @interface ZSURLConnectionDelegate : NSOperation 
 
 @property (nonatomic, assign, getter=isVerbose) BOOL verbose;
@@ -62,6 +64,14 @@ void decrementNetworkActivity(id sender);
 
 @property (readwrite, retain) id userInfo;
 
+// Block based initializers. Don't provide delegate, successSelector, failureSelector
+- (id)initWithRequest:(NSURLRequest *)newRequest successBlock:(zsURLConnectionDelegateCompletionBlock)aSuccessBlock failureBlock:(zsURLConnectionDelegateCompletionBlock)aFailureBlock;
+- (id)initWithURL:(NSURL *)aURL successBlock:(zsURLConnectionDelegateCompletionBlock)aSuccessBlock failureBlock:(zsURLConnectionDelegateCompletionBlock)aFailureBlock;
+
++ (id)operationWithRequest:(NSURLRequest *)newRequest successBlock:(zsURLConnectionDelegateCompletionBlock)aSuccessBlock failureBlock:(zsURLConnectionDelegateCompletionBlock)aFailureBlock;
++ (id)operationWithURL:(NSURL *)aURL successBlock:(zsURLConnectionDelegateCompletionBlock)aSuccessBlock failureBlock:(zsURLConnectionDelegateCompletionBlock)aFailureBlock;
+
+// Delegate/callback initializers.
 - (id)initWithRequest:(NSURLRequest *)newRequest delegate:(id)delegate;
 - (id)initWithURL:(NSURL*)aURL delegate:(id)delegate;
 

@@ -59,62 +59,56 @@
   [[self window] makeKeyAndVisible];
   
   NSURL *feedURL = [NSURL URLWithString:kFeedHREF];
-  ZSURLConnectionDelegate *delegate = [[ZSURLConnectionDelegate alloc] initWithURL:feedURL delegate:self];
-  [delegate setSuccessSelector:@selector(feedDownloadSuccessful:)];
-  [delegate setFailureSelector:@selector(feedDownloadFailure:)];
-  [[NSOperationQueue mainQueue] addOperation:delegate];
-  MCRelease(delegate);
-  
-  assetManager = [[ZSAssetManager alloc] init];
-	[root setAssetManager:assetManager];
-  
-  return YES;
-}
-
-- (void)feedDownloadSuccessful:(ZSURLConnectionDelegate*)delegate
-{
-  DLog(@"success!");
-  
-  NSError *error = nil;
-  document = [[GDataXMLDocument alloc] initWithData:[delegate data] options:0 error:&error];
-  ZAssert(!error || document, @"Error parsing xml: %@", error);
-  
-  DLog(@"document %@", document);
-  
-  GDataXMLElement *channel = [[[document rootElement] elementsForName:@"channel"] lastObject];
-  NSArray *items = [channel elementsForName:@"item"];
-  
-  NSMutableSet *cacheRequest = [[NSMutableSet alloc] init];
-  for (GDataXMLElement *item in items) {
-    GDataXMLElement *mediaContent = [[item elementsForName:@"media:content"] lastObject];
-    ZAssert(mediaContent, @"Failed to find media:content: %@", item);
-
-    NSString *urlString = [[mediaContent attributeForName:@"url"] stringValue];
-    NSURL *url = [NSURL URLWithString:urlString];
-    ZAssert(url, @"Bad url: %@", urlString);
-    [cacheRequest addObject:url];
-	  
-    GDataXMLElement *mediaThumbnail = [[item elementsForName:@"media:thumbnail"] lastObject];
-    ZAssert(mediaThumbnail, @"Failed to find media thumbnail: %@", item);
     
-    NSString *thumbnailURLString = [[mediaThumbnail attributeForName:@"url"] stringValue];
-    NSURL *thumbnailURL = [NSURL URLWithString:thumbnailURLString];
-    ZAssert(thumbnailURL, @"Bad URL: %@", thumbnailURLString);
-    [cacheRequest addObject:thumbnailURL];
-  }
-  
-  [assetManager queueAssetsForRetrievalFromURLSet:cacheRequest];
-  MCRelease(cacheRequest);
-  
-  id navController = [[self window] rootViewController];
-  id root = [[navController viewControllers] objectAtIndex:0];
-  [root populateWithXMLItems:items];
-  
-}
-
-- (void)feedDownloadFailure:(ZSURLConnectionDelegate*)error
-{
-  ALog(@"Failure: %@", error);
+	ZSURLConnectionDelegate *delegate = [[ZSURLConnectionDelegate alloc] initWithURL:feedURL 
+											successBlock:^(ZSURLConnectionDelegate *delegate) {
+												DLog(@"success!");
+												
+												NSError *error = nil;
+												document = [[GDataXMLDocument alloc] initWithData:[delegate data] options:0 error:&error];
+												ZAssert(!error || document, @"Error parsing xml: %@", error);
+												
+												DLog(@"document %@", document);
+												
+												GDataXMLElement *channel = [[[document rootElement] elementsForName:@"channel"] lastObject];
+												NSArray *items = [channel elementsForName:@"item"];
+												
+												NSMutableSet *cacheRequest = [[NSMutableSet alloc] init];
+												for (GDataXMLElement *item in items) {
+													GDataXMLElement *mediaContent = [[item elementsForName:@"media:content"] lastObject];
+													ZAssert(mediaContent, @"Failed to find media:content: %@", item);
+													
+													NSString *urlString = [[mediaContent attributeForName:@"url"] stringValue];
+													NSURL *url = [NSURL URLWithString:urlString];
+													ZAssert(url, @"Bad url: %@", urlString);
+													[cacheRequest addObject:url];
+													
+													GDataXMLElement *mediaThumbnail = [[item elementsForName:@"media:thumbnail"] lastObject];
+													ZAssert(mediaThumbnail, @"Failed to find media thumbnail: %@", item);
+													
+													NSString *thumbnailURLString = [[mediaThumbnail attributeForName:@"url"] stringValue];
+													NSURL *thumbnailURL = [NSURL URLWithString:thumbnailURLString];
+													ZAssert(thumbnailURL, @"Bad URL: %@", thumbnailURLString);
+													[cacheRequest addObject:thumbnailURL];
+												}
+												
+												[assetManager queueAssetsForRetrievalFromURLSet:cacheRequest];
+												MCRelease(cacheRequest);
+												
+												id navController = [[self window] rootViewController];
+												id root = [[navController viewControllers] objectAtIndex:0];
+												[root populateWithXMLItems:items];
+											} 
+											failureBlock:^(ZSURLConnectionDelegate *error) {
+												ALog(@"Failure: %@", error);
+											}];
+	[[NSOperationQueue mainQueue] addOperation:delegate];
+	MCRelease(delegate);
+	
+	assetManager = [[ZSAssetManager alloc] init];
+	[root setAssetManager:assetManager];
+	
+	return YES;
 }
 
 - (void)dealloc

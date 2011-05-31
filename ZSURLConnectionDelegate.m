@@ -66,6 +66,10 @@ void decrementNetworkActivity(id sender)
 @property (readwrite, retain) NSFileHandle *inProgressFileHandle;
 @property (readwrite) NSInteger HTTPStatus;
 @property (readwrite, retain) NSURLRequest *request;
+
+@property (readwrite, copy) zsURLConnectionDelegateCompletionBlock successBlock;
+@property (readwrite, copy) zsURLConnectionDelegateCompletionBlock failureBlock;
+
 @end
 
 @implementation ZSURLConnectionDelegate
@@ -98,11 +102,42 @@ void decrementNetworkActivity(id sender)
 
 @synthesize userInfo;
 
+@synthesize successBlock;
+@synthesize failureBlock;
+
 static dispatch_queue_t writeQueue;
 static dispatch_queue_t pngQueue;
 
 #pragma mark -
-#pragma mark Initializers
+#pragma mark Block-based initializers
+- (id)initWithRequest:(NSURLRequest *)newRequest successBlock:(zsURLConnectionDelegateCompletionBlock)aSuccessBlock failureBlock:(zsURLConnectionDelegateCompletionBlock)aFailureBlock;
+{
+  if (!(self = [super init])) return nil;
+  
+  request = [newRequest retain];
+  successBlock = [aSuccessBlock copy];
+  failureBlock = [aFailureBlock copy];
+  
+  [self setMyURL:[newRequest URL]];
+  
+  if (writeQueue == NULL) {
+    writeQueue = dispatch_queue_create("cache write queue", NULL);
+  }
+  
+  if (pngQueue == NULL) {
+    pngQueue = dispatch_queue_create("png generation queue", NULL);
+  }
+  
+  return self;
+}
+
+- (id)initWithURL:(NSURL *)aURL successBlock:(zsURLConnectionDelegateCompletionBlock)aSuccessBlock failureBlock:(zsURLConnectionDelegateCompletionBlock)aFailureBlock;
+{
+  return [self initWithRequest:[NSURLRequest requestWithURL:aURL] successBlock:aSuccessBlock failureBlock:aFailureBlock];
+}
+
+#pragma mark -
+#pragma mark Delegate/callback based initializers.
 - (id)initWithRequest:(NSURLRequest *)newRequest delegate:(id)aDelegate;
 {
   if (!(self = [super init])) return nil;
@@ -130,6 +165,16 @@ static dispatch_queue_t pngQueue;
 
 #pragma mark -
 #pragma mark Convenience factory methods
++ (id)operationWithRequest:(NSURLRequest *)newRequest successBlock:(zsURLConnectionDelegateCompletionBlock)aSuccessBlock failureBlock:(zsURLConnectionDelegateCompletionBlock)aFailureBlock;
+{
+  return [[[ZSURLConnectionDelegate alloc] initWithRequest:newRequest successBlock:aSuccessBlock failureBlock:aFailureBlock] autorelease];
+}
+
++ (id)operationWithURL:(NSURL *)aURL successBlock:(zsURLConnectionDelegateCompletionBlock)aSuccessBlock failureBlock:(zsURLConnectionDelegateCompletionBlock)aFailureBlock;
+{
+  return [[[ZSURLConnectionDelegate alloc] initWithURL:aURL successBlock:aSuccessBlock failureBlock:aFailureBlock] autorelease];
+}
+
 + (id)operationWithRequest:(NSURLRequest *)newRequest delegate:(id)aDelegate
 {
   return [[[ZSURLConnectionDelegate alloc] initWithRequest:newRequest delegate:aDelegate] autorelease];
@@ -159,6 +204,9 @@ static dispatch_queue_t pngQueue;
   MCRelease(request);
   MCRelease(response);
   MCRelease(userInfo);
+    
+  MCRelease(successBlock);
+  MCRelease(failureBlock);
 
   MCRelease(inProgressFilePath);
   MCRelease(inProgressFileHandle);
@@ -223,6 +271,10 @@ static dispatch_queue_t pngQueue;
    
   // Even if filePath was set, the delegate might try to look at the data blob.
   data = [[NSData alloc] initWithContentsOfMappedFile:[self inProgressFilePath]];
+  if ([self successBlock] != nil) {
+    [self successBlock](self);
+  }
+    
   if ([[self delegate] respondsToSelector:[self successSelector]]) {
     [[self delegate] performSelectorOnMainThread:[self successSelector] withObject:self waitUntilDone:YES];
   }
@@ -274,6 +326,10 @@ static dispatch_queue_t pngQueue;
     return;
   }
   DLog(@"Failure %@\nURL: %@", [error localizedDescription], [self myURL]);
+  if ([self failureBlock] != nil) {
+    [self failureBlock](self);
+  }
+    
   if ([[self delegate] respondsToSelector:[self failureSelector]]) {
     [[self delegate] performSelectorOnMainThread:[self failureSelector] withObject:self waitUntilDone:YES];
   }
