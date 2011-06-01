@@ -271,11 +271,17 @@ static dispatch_queue_t pngQueue;
    
   // Even if filePath was set, the delegate might try to look at the data blob.
   data = [[NSData alloc] initWithContentsOfMappedFile:[self inProgressFilePath]];
+
+  // Run success block on main queue, but don't dispatch_sync to the current queue.
   if ([self successBlock] != nil) {
-    [self successBlock](self);
-  }
-    
-  if ([[self delegate] respondsToSelector:[self successSelector]]) {
+    if (dispatch_get_current_queue() == dispatch_get_main_queue()) {
+      [self successBlock](self);
+    } else {
+      dispatch_sync(dispatch_get_main_queue(), ^{
+        [self successBlock](self);
+      });
+    }
+  } else if ([[self delegate] respondsToSelector:[self successSelector]]) {
     [[self delegate] performSelectorOnMainThread:[self successSelector] withObject:self waitUntilDone:YES];
   }
   [self finish];
@@ -326,13 +332,19 @@ static dispatch_queue_t pngQueue;
     return;
   }
   DLog(@"Failure %@\nURL: %@", [error localizedDescription], [self myURL]);
+  // Run failure block on main queue, but don't dispatch_sync to the current queue.
   if ([self failureBlock] != nil) {
-    [self failureBlock](self);
-  }
-    
-  if ([[self delegate] respondsToSelector:[self failureSelector]]) {
+    if (dispatch_get_current_queue() == dispatch_get_main_queue()) {
+      [self failureBlock](self);
+    } else {
+      dispatch_sync(dispatch_get_main_queue(), ^{
+        [self failureBlock](self);
+      });
+    }
+  } else if ([[self delegate] respondsToSelector:[self failureSelector]]) {
     [[self delegate] performSelectorOnMainThread:[self failureSelector] withObject:self waitUntilDone:YES];
   }
+
   [self setDelegate:nil];
   [self finish];
 }
