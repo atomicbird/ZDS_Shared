@@ -108,16 +108,13 @@ void decrementNetworkActivity(id sender)
 static dispatch_queue_t writeQueue;
 static dispatch_queue_t pngQueue;
 
-#pragma mark -
-#pragma mark Block-based initializers
-- (id)initWithRequest:(NSURLRequest *)newRequest successBlock:(zsURLConnectionDelegateCompletionBlock)aSuccessBlock failureBlock:(zsURLConnectionDelegateCompletionBlock)aFailureBlock;
+// Common initialization back-end, used only internally.
+- (id)initWithRequest:(NSURLRequest *)newRequest
 {
   if (!(self = [super init])) return nil;
-  
+
   request = [newRequest retain];
-  successBlock = [aSuccessBlock copy];
-  failureBlock = [aFailureBlock copy];
-  
+
   [self setMyURL:[newRequest URL]];
   
   if (writeQueue == NULL) {
@@ -127,6 +124,22 @@ static dispatch_queue_t pngQueue;
   if (pngQueue == NULL) {
     pngQueue = dispatch_queue_create("png generation queue", NULL);
   }
+  
+  if (dispatchFileWriteGroup == NULL) {
+    dispatchFileWriteGroup = dispatch_group_create();
+  }
+  
+  return self;
+}
+
+#pragma mark -
+#pragma mark Block-based initializers
+- (id)initWithRequest:(NSURLRequest *)newRequest successBlock:(zsURLConnectionDelegateCompletionBlock)aSuccessBlock failureBlock:(zsURLConnectionDelegateCompletionBlock)aFailureBlock;
+{
+  if (!(self = [self initWithRequest:newRequest])) return nil;
+  
+  successBlock = [aSuccessBlock copy];
+  failureBlock = [aFailureBlock copy];
   
   return self;
 }
@@ -140,24 +153,9 @@ static dispatch_queue_t pngQueue;
 #pragma mark Delegate/callback based initializers.
 - (id)initWithRequest:(NSURLRequest *)newRequest delegate:(id)aDelegate;
 {
-  if (!(self = [super init])) return nil;
+  if (!(self = [self initWithRequest:newRequest])) return nil;
   
-  request = [newRequest retain];
   delegate = [aDelegate retain];
-  [self setMyURL:[newRequest URL]];
-
-  if (writeQueue == NULL) {
-    writeQueue = dispatch_queue_create("cache write queue", NULL);
-  }
-  
-  if (pngQueue == NULL) {
-    pngQueue = dispatch_queue_create("png generation queue", NULL);
-  }
-  
-  if (dispatchFileWriteGroup == NULL) {
-    dispatchFileWriteGroup = dispatch_group_create();
-  }
-  
   return self;
 }
 
