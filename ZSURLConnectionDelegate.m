@@ -248,49 +248,50 @@ static dispatch_queue_t pngQueue;
   
   [self setConnection:[NSURLConnection connectionWithRequest:[self request] delegate:self]];
   
-  CFRunLoopRun();
+    if (CFRunLoopGetCurrent() != CFRunLoopGetMain()) {
+        CFRunLoopRun();
+    }
   
   decrementNetworkActivity(self);
 }
 
 - (void)finish
 {
-  CFRunLoopStop(CFRunLoopGetCurrent());
+    if (CFRunLoopGetCurrent() != CFRunLoopGetMain()) {
+        CFRunLoopStop(CFRunLoopGetCurrent());
+    }
 }
 
 #pragma mark -
 #pragma mark NSURLConnection delegate methods
 - (void)connectionDidFinishLoading:(NSURLConnection*)connection
 {
-  dispatch_group_wait([self dispatchFileWriteGroup], DISPATCH_TIME_FOREVER);
-  
-  [[self inProgressFileHandle] closeFile];
-  
-  DLog(@"finished for %@", [self myURL]);
-  if ([self isCancelled]) {
-    [[self connection] cancel];
-    [self finish];
-    return;
-  }
-  
-  [self setDuration:([NSDate timeIntervalSinceReferenceDate] - [self startTime])];
-   
-  // Even if filePath was set, the delegate might try to look at the data blob.
-  data = [[NSData alloc] initWithContentsOfMappedFile:[self inProgressFilePath]];
-
-  // Run success block on main queue, but don't dispatch_sync to the current queue.
-  if ([self successBlock] != nil) {
-    if (dispatch_get_current_queue() == dispatch_get_main_queue()) {
-      [self successBlock](self);
-    } else {
-      dispatch_sync(dispatch_get_main_queue(), ^{
-        [self successBlock](self);
-      });
-    }
-  } else if ([[self delegate] respondsToSelector:[self successSelector]]) {
-    [[self delegate] performSelectorOnMainThread:[self successSelector] withObject:self waitUntilDone:YES];
-  }
-  [self finish];
+    // Hold completion code until the incoming data has all been written out.
+    dispatch_group_notify([self dispatchFileWriteGroup], writeQueue, ^{
+        [[self inProgressFileHandle] closeFile];
+        
+        DLog(@"finished for %@", [self myURL]);
+        if ([self isCancelled]) {
+            [[self connection] cancel];
+            [self finish];
+            return;
+        }
+        
+        [self setDuration:([NSDate timeIntervalSinceReferenceDate] - [self startTime])];
+        
+        // Even if filePath was set, the delegate might try to look at the data blob.
+        data = [[NSData alloc] initWithContentsOfMappedFile:[self inProgressFilePath]];
+        
+        if ([self successBlock] != nil) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self successBlock](self);
+                [self finish];
+            });
+        } else if ([[self delegate] respondsToSelector:[self successSelector]]) {
+            [[self delegate] performSelectorOnMainThread:[self successSelector] withObject:self waitUntilDone:YES];
+            [self finish];
+        }
+    });
 }
 
 - (void)connection:(NSURLConnection*)connection didReceiveResponse:(NSHTTPURLResponse*)resp
@@ -340,19 +341,16 @@ static dispatch_queue_t pngQueue;
   DLog(@"Failure %@\nURL: %@", [error localizedDescription], [self myURL]);
   // Run failure block on main queue, but don't dispatch_sync to the current queue.
   if ([self failureBlock] != nil) {
-    if (dispatch_get_current_queue() == dispatch_get_main_queue()) {
-      [self failureBlock](self);
-    } else {
-      dispatch_sync(dispatch_get_main_queue(), ^{
-        [self failureBlock](self);
+      dispatch_async(dispatch_get_main_queue(), ^{
+          [self failureBlock](self);
+          [self finish];
       });
-    }
   } else if ([[self delegate] respondsToSelector:[self failureSelector]]) {
     [[self delegate] performSelectorOnMainThread:[self failureSelector] withObject:self waitUntilDone:YES];
+    [self finish];
   }
 
   [self setDelegate:nil];
-  [self finish];
 }
 
 - (BOOL)connection:(NSURLConnection *)connection canAuthenticateAgainstProtectionSpace:(NSURLProtectionSpace *)protectionSpace {
